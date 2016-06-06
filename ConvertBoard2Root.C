@@ -1,3 +1,50 @@
+/*
+ 
+   Name:           ConvertBoard2Root.C
+   Created by:     Maksat Haytmyradov <mhaytmyr@fnal.gov>
+   Date:           May 10th, 2016
+ 
+   Purpose:        Example program under ROOT to read a binary data file written 
+                   by the DRSOsc program. Decode time and voltages from waveforms 
+                   and display them as a graph. Put values into a ROOT Tree for 
+                   further analysis.
+ 
+                   To run it, do:
+ 
+                   - Crate a file test.dat via the "Save" button in DRSOsc
+                   - start ROOT
+                   root [0] .L ConvertBoard2Root.C+
+                   root [1] readDRS("test.dat");
+
+		   - This will produce a file name. test.root
+                   - The file contains:
+                      TTree rec,
+	              Under tree there are braches. Naming convention.
+		      -------------------------------
+                      Amplitude of board1 ch1: b1_w1
+                      Times of board1 ch1: b1_t1 
+		      -------------------------------
+		      Amplitude of board1 ch2: b1_w2
+                      Times of board1 ch12: b1_t2
+		     --------------------------------
+                     Amplitude of board1 ch3: b1_w3
+                      Times of board1 ch3: b1_t3
+                     ------------------------------
+                     
+                      
+
+                     Amplitude of board2 ch1: b2_w1
+                     Times of board2 ch1: b2_t1
+		     ------------------------------
+	             Amplitude of board3 ch1: b3_w1
+                     Times of board3 ch1: b3_t1
+
+			
+
+*/
+
+
+
 // include std libraries
 #include <iostream>
 #include <fstream>
