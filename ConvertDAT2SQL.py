@@ -4,18 +4,24 @@ import re
 
 with open("Run_171900.dat","rb") as fin:
 	header = fin.read(4)
-	print header
-	brHeader= fin.read(4)
-	brSerial = unpack('H',brHeader[2:])
-	print brHeader[:2],brSerial[0]
 
-	#for i in range(0,4):
-	chHeader = fin.read(4)
-	binWidth = unpack('1024f',chHeader[4:])
-	#print chHeader[:2],binWidth
+	for j in range(0,3):
+		brHeader= fin.read(4)
+		if not re.search('B',brHeader):
+			fin.seek(-4,1)
+			break
+		brSerial = unpack('H',brHeader[2:])
+		print "Reading Board...",brHeader[:2],brSerial[0]
+
+		for i in range(0,4):
+			chHeader = fin.read(4)
+			if not re.search('C',chHeader):
+				fin.seek(-4,1)
+				break
+
+			print "Read channel...",chHeader
+			binData = fin.read(4096)
+			binWidth = unpack('1024f',binData)
 	
-	if re.search('C',chHeader):
-		print chHeader[:4]	
-		#if chHeader[1] not 'C':
 				
 
