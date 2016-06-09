@@ -1,4 +1,6 @@
 #include <iostream>
+#include <iomanip>
+#include <fstream>
 #include "TROOT.h"
 #include "TFile.h"
 #include "TTree.h"
@@ -62,18 +64,29 @@ void analyze_MCP(char *filename)
 	//read input file
 	TFile *fIn = new TFile(filename);
 	TTree *t1 = (TTree*)fIn->Get("rec");
+	std::ofstream outFile("PlaniconTimeDifference.txt",ios::out);
 
 
 	//decalare variables to hold 
 	Double_t b1_ch1[1024], b1_ch2[1024], b1_ch3[1024], b1_ch4[1024];
 	Double_t b1_t1[1024], b1_t2[1024], b1_t3[1024], b1_t4[1024];
 	//
-	int ch1Min, ch2Min, ch3Min, ch4Min;
+	int ch1Min, ch2Min, ch3Min, ch4Min, ch1Max, ch2Max;
+	std::vector<double> tmpX, tmpY;
 	double risingEdgeCh1X[4],risingEdgeCh1Y[4];
+	double risingEdgeCh2X[4],risingEdgeCh2Y[4];
 	double risingEdgeCh3X[4],risingEdgeCh3Y[4];
 	double risingEdgeCh4X[4],risingEdgeCh4Y[4];
 	int ch1Idx = 0, ch2Idx = 0, ch3Idx = 0, ch4Idx = 0;
+	double ch1halfRise, ch2halfRise, ch3halfRise, ch4halfRise;
 
+	TGraphErrors risingEdgeCh1, risingEdgeCh2, risingEdgeCh3, risingEdgeCh4;
+	TFitResultPtr ch1Fit, ch2Fit, ch3Fit, ch4Fit;
+
+	risingEdgeCh1.SetMarkerColor(kBlue);
+	risingEdgeCh2.SetMarkerColor(kBlue);
+	risingEdgeCh3.SetMarkerColor(kRed);
+	risingEdgeCh4.SetMarkerColor(kRed);
 
 	//get from branch
 	t1->SetBranchAddress("b1_w1",&b1_ch1);
@@ -86,57 +99,88 @@ void analyze_MCP(char *filename)
    	t1->SetBranchAddress("b1_t3",&b1_t3);
    	t1->SetBranchAddress("b1_t4",&b1_t4);
 
+	TCanvas *c1 = new TCanvas("c1","Dynamic Filling Example",1400,600);
+        c1->Divide(2);
+        //decalre histograms
+        TH2F *ch1Histo = new TH2F("ch2Histo","",40000,-200,200,100,-0.15,0.15); //ns
+        TH2F *ch2Histo = new TH2F("ch2Histo","",40000,-200,200,100,-0.15,0.15); //ns
+        TH2F *ch3Histo = new TH2F("ch3Histo","",40000,-200,200,100,-0.6,0.2); //ns
+        TH2F *ch4Histo = new TH2F("ch4Histo","",40000,-200,200,100,-0.6,0.2); //ns
 
-	TCanvas *c1 = new TCanvas("c1","Dynamic Filling Example",200,10,700,500);
-	TH2F *Ch3Dynamic = new TH2F("Ch3Dynamic","",40000,-200,200,100,-0.6,0.2); //ns
+	ch2Histo->GetXaxis()->SetTitle("Pulse time (ns)");
+        ch2Histo->GetYaxis()->SetTitle("Pulse amplitude (V)");
+        ch2Histo->SetStats(0000);
+        ch2Histo->GetYaxis()->SetTitleOffset(1.3);
+        ch2Histo->SetMarkerStyle(20);
+        ch2Histo->SetMarkerColor(kBlue);
+
+        ch3Histo->GetXaxis()->SetTitle("Pulse time (ns)");
+        ch3Histo->GetYaxis()->SetTitle("Pulse amplitude (V)");
+        ch3Histo->SetStats(0000);
+        ch3Histo->SetMarkerStyle(20);
+        ch3Histo->SetMarkerColor(kRed);
+        ch3Histo->SetMarkerSize(1);
+
+        ch4Histo->GetXaxis()->SetTitle("Pulse time (ns)");
+        ch4Histo->GetYaxis()->SetTitle("Pulse amplitude (V)");
+        ch4Histo->SetStats(0000);
+        ch4Histo->SetMarkerStyle(20);
+        ch4Histo->SetMarkerColor(kRed);
+
 	TH1F *deltaCh1Ch4 = new TH1F("deltaCh1Ch4","",50000,-1,1); //ns
 	TH1F *deltaCh3Ch4 = new TH1F("deltaCh3Ch4","",50000,-1,1); //ns
-
-	Ch3Dynamic->GetXaxis()->SetTitle("Pulse time (ns)");
-	Ch3Dynamic->GetYaxis()->SetTitle("Pulse amplitude (V)");
-	Ch3Dynamic->SetStats(0000);
-	Ch3Dynamic->SetMarkerStyle(20);
-	Ch3Dynamic->SetMarkerColor(2);
-	Ch3Dynamic->SetMarkerSize(1);
-
+	TH1F *chiSquare = new TH1F("chiSquare","",1000,0,0.01); //ns
 
 	//read all entries and fill the histograms
    	Long64_t nentries = t1->GetEntries();
-	for (Long64_t iEntry=0; iEntry<nentries; iEntry++) 
+	//for (Long64_t iEntry=0; iEntry<nentries; iEntry++) 
+	for (int iEntry=0; iEntry<nentries; iEntry++) 
 	//for (Long64_t iEntry=0; iEntry<5; iEntry++) 
 	{
      		t1->GetEntry(iEntry);
 
 		std::cout<<"Entry Number "<<iEntry<<std::endl;
+		//for ch1 and ch2 fit between peak and min
 		ch1Min = findMin(sampleSize,b1_ch1);
 		ch2Min = findMin(sampleSize,b1_ch2);
+		ch1Max = findMax(sampleSize,b1_ch1);
+		ch2Max = findMax(sampleSize,b1_ch2);
+		//for ch3 and ch4 find rising edge
 		ch3Min = findMin(sampleSize,b1_ch3);
 		ch4Min = findMin(sampleSize,b1_ch4);
+	
+		if(b1_ch2[ch2Min]>-0.07 || b1_ch1[ch1Min]>-0.07) continue;
 
 		double ch1halfMin = b1_ch1[ch1Min]/2;
+		double ch2halfMin = b1_ch2[ch2Min]/2;
 		double ch3halfMin = b1_ch3[ch3Min]/2;
 		double ch4halfMin = b1_ch4[ch4Min]/2;
-		ch1Idx = 0, ch3Idx = 0; ch4Idx = 0;
+		ch1Idx = 0, ch2Idx =0, ch3Idx = 0; ch4Idx = 0;
 
 		for(int m=0; m<1024; m++)
                 {
-                        //Ch3Dynamic->Fill(b1_t3[m],b1_ch3[m]);
-                        if(b1_ch1[ch1Min]<-0.1)
-			Ch3Dynamic->Fill(b1_t1[m],b1_ch1[m]);
+                        ch1Histo->Fill(b1_t1[m],b1_ch1[m]);
+                        ch2Histo->Fill(b1_t2[m],b1_ch2[m]);
+                        ch3Histo->Fill(b1_t3[m],b1_ch3[m]);
+                        ch4Histo->Fill(b1_t4[m],b1_ch4[m]);
 
-			//Do it for Channel 4 first
-			if(b1_ch1[m]>ch1halfMin && ch1Min-m<3 && m<ch1Min)
+			//Do it for Channel 1 
+			if(m<=ch1Max && m>=ch1Min)
                         {
                                 risingEdgeCh1X[ch1Idx] = b1_t1[m];
                                 risingEdgeCh1Y[ch1Idx] = b1_ch1[m];
                                 ch1Idx+=1;
                         }
-                        if(b1_ch1[m]<ch1halfMin && m<ch1Min)
+
+			//Do it for Channel 2
+			if(m<=ch2Max && m>=ch2Min)
                         {
-                                risingEdgeCh1X[ch1Idx] = b1_t1[m];
-                                risingEdgeCh1Y[ch1Idx] = b1_ch1[m];
-                                ch1Idx+=1;
-			}
+                                risingEdgeCh2X[ch2Idx] = b1_t2[m];
+                                risingEdgeCh2Y[ch2Idx] = b1_ch2[m];
+				//tmpX.push_back(b1_t2[m]);
+				//tmpY.push_back(b1_ch2[m]);
+                                ch2Idx+=1;
+                        }
 			
 			//Do it for Channel 3 first
 			if(b1_ch3[m]>ch3halfMin && ch3Min-m<5 && m<ch3Min)
@@ -168,41 +212,76 @@ void analyze_MCP(char *filename)
 
                 }
 
-		//Perform linear fit to Channel3
-		TGraphErrors risingEdgeCh1(4,risingEdgeCh1X,risingEdgeCh1Y);
-		TFitResultPtr ch1Fit = risingEdgeCh1.Fit("pol1","SFC");
-		double ch1halfRise = getRiseTime(ch1Fit->Value(0),ch1Fit->Value(1),ch1halfMin);
+
+		//Perform linear fit to Channel1
+		risingEdgeCh1 = TGraphErrors(4,risingEdgeCh1X,risingEdgeCh1Y);
+		ch1Fit = risingEdgeCh1.Fit("pol1","SFC");
+		ch1halfRise = getRiseTime(ch1Fit->Value(0),ch1Fit->Value(1),0.00);
+
+		risingEdgeCh2 = TGraphErrors(4,risingEdgeCh2X,risingEdgeCh2Y);
+		ch2Fit = risingEdgeCh2.Fit("pol1","SFC");
+		ch2halfRise = getRiseTime(ch2Fit->Value(0),ch2Fit->Value(1),0.00);
+		
 
 		//Perform linear fit to Channel3
-		TGraphErrors risingEdgeCh3(4,risingEdgeCh3X,risingEdgeCh3Y);
-		TFitResultPtr ch3Fit = risingEdgeCh3.Fit("pol1","SFC");
-		double ch3halfRise = getRiseTime(ch3Fit->Value(0),ch3Fit->Value(1),ch3halfMin);
+		risingEdgeCh3 = TGraphErrors(4,risingEdgeCh3X,risingEdgeCh3Y);
+		ch3Fit = risingEdgeCh3.Fit("pol1","SFC");
+		ch3halfRise = getRiseTime(ch3Fit->Value(0),ch3Fit->Value(1),ch3halfMin);
 
 		//Perform linear fit to Channel4
-                TGraphErrors risingEdgeCh4(4,risingEdgeCh4X,risingEdgeCh4Y);
-                TFitResultPtr ch4Fit = risingEdgeCh4.Fit("pol1","SFC");
-                double ch4halfRise = getRiseTime(ch4Fit->Value(0),ch4Fit->Value(1),ch4halfMin);
+                risingEdgeCh4 = TGraphErrors(4,risingEdgeCh4X,risingEdgeCh4Y);
+                ch4Fit = risingEdgeCh4.Fit("pol1","SFC");
+                ch4halfRise = getRiseTime(ch4Fit->Value(0),ch4Fit->Value(1),ch4halfMin);
 
-		std::cout<<"Ch1 Rise Time "<<ch1halfRise<<std::endl;
+		std::cout<<"Ch2 Rise Time "<<ch2halfRise<<std::endl;
 		std::cout<<"Ch3 Rise Time "<<ch3halfRise<<std::endl;
-		std::cout<<"Ch4 Rise Time "<<ch4halfRise<<std::endl;
+		//std::cout<<"Ch2 Array "<<sizeof(risingEdgeCh2X)/sizeof(risingEdgeCh2X[0])<<std::endl;
+
+		/*
+		//Perform linear fit to Channel2
+		for (unsigned int i=0; i<tmpX.size(); i++)
+		{
+			std::cout<<"Vector is "<<tmpX.at(i)<<":"<<tmpY.at(i)<<std::endl;
+		}
+		tmpX.clear(); tmpY.clear();		
+		*/
+
+
+		outFile<<std::setprecision(std::numeric_limits<long double>::digits10 + 1)<<
+		" "<<ch3halfRise-ch4halfRise<<
+		" "<<ch1halfRise-ch2halfRise<<
+		" "<<ch3halfRise-ch1halfRise<<
+		" "<<ch3halfRise-ch2halfRise<<
+		" "<<ch2Fit->Chi2()<<" "<<b1_ch2[ch2Min]<<" "<<b1_ch3[ch3Min]<<" "<<b1_ch4[ch4Min]<<
+		" "<<std::endl;
 
 		deltaCh1Ch4->Fill(ch1halfRise-ch4halfRise);
 		deltaCh3Ch4->Fill(ch3halfRise-ch4halfRise);
+		chiSquare->Fill(ch4Fit->Chi2());
 
-		//myFit->Print("V");
+		/*
+		//zoom in
+                ch2Histo->GetXaxis()->SetRangeUser(b1_t2[ch2Min-30],b1_t2[ch2Min+30]);
+                ch3Histo->GetXaxis()->SetRangeUser(b1_t3[ch3Min-30],b1_t3[ch3Min+30]);
+		//draw ch3 first
+		c1->cd(1); ch3Histo->Draw(); risingEdgeCh3.Draw("same");
+		//draw ch2 next
+		c1->cd(2); ch2Histo->Draw(); risingEdgeCh2.Draw("same");
 
-                //Ch3Dynamic->GetXaxis()->SetRangeUser(b1_t3[ch3Min-50],b1_t3[ch3Min+30]);
-                Ch3Dynamic->GetXaxis()->SetRangeUser(b1_t1[ch1Min-50],b1_t1[ch1Min+30]);
-                Ch3Dynamic->Draw();
                 c1->Modified();
                 c1->Update();
-                Ch3Dynamic->Reset();
-                gSystem->Sleep(350);  //in mictroseconds
+		//char histo[50];
+                //sprintf(histo,"b1_ch4_WithFit_%d.gif",iEntry);
+                //c1->SaveAs(histo);
+
+                ch2Histo->Reset(); ch3Histo->Reset();
+                gSystem->Sleep(1500);  //in mictroseconds
+		*/
 
 	}
 
-	deltaCh3Ch4->Draw();
+	//deltaCh3Ch4->Draw();
+	chiSquare->Draw();
 
 }
 
@@ -228,18 +307,40 @@ void plot_MCP(char *filename)
    	t1->SetBranchAddress("b1_t4",&b1_t4);
 
 
-	TCanvas *c1 = new TCanvas("c1","Dynamic Filling Example",200,10,700,500);
+	TCanvas *c1 = new TCanvas("c1","Dynamic Filling Example",1400,600);
+	//c1->Divide(2,2);
+	c1->Divide(2);
 	//decalre histograms
-	TH1F *delTMax = new TH1F("delTMax","Delta T btw maxima",10000,-10,10); //ns
-	TH2F *Ch3Dynamic = new TH2F("Ch3Dynamic","",40000,-200,200,100,-0.6,0.2); //ns
+	TH2F *ch1Histo = new TH2F("ch2Histo","",40000,-200,200,100,-0.15,0.15); //ns
+	TH2F *ch2Histo = new TH2F("ch2Histo","",40000,-200,200,100,-0.15,0.15); //ns
+	TH2F *ch3Histo = new TH2F("ch3Histo","",40000,-200,200,100,-0.6,0.2); //ns
+	TH2F *ch4Histo = new TH2F("ch4Histo","",40000,-200,200,100,-0.6,0.2); //ns
 
-	Ch3Dynamic->GetXaxis()->SetTitle("Pulse time (ns)");
-	Ch3Dynamic->GetYaxis()->SetTitle("Pulse amplitude (V)");
-	Ch3Dynamic->SetStats(0000);
-	Ch3Dynamic->SetMarkerStyle(20);
-	//Ch3Dynamic->SetMarkerColor(4);
-	Ch3Dynamic->SetMarkerColor(2);
-	Ch3Dynamic->SetMarkerSize(1);
+	ch3Histo->GetXaxis()->SetTitle("Pulse time (ns)");
+	ch3Histo->GetYaxis()->SetTitle("Pulse amplitude (V)");
+	ch3Histo->SetStats(0000);
+	ch3Histo->SetMarkerStyle(20);
+	ch3Histo->SetMarkerColor(kRed);
+	ch3Histo->SetMarkerSize(1);
+
+	ch4Histo->GetXaxis()->SetTitle("Pulse time (ns)");
+	ch4Histo->GetYaxis()->SetTitle("Pulse amplitude (V)");
+	ch4Histo->SetStats(0000);
+	ch4Histo->SetMarkerStyle(20);
+	ch4Histo->SetMarkerColor(kRed);
+
+	ch2Histo->GetXaxis()->SetTitle("Pulse time (ns)");
+	ch2Histo->GetYaxis()->SetTitle("Pulse amplitude (V)");
+	ch2Histo->SetStats(0000);
+        ch2Histo->GetYaxis()->SetTitleOffset(1.3);
+	ch2Histo->SetMarkerStyle(20);
+	ch2Histo->SetMarkerColor(kBlue);
+
+	ch1Histo->GetXaxis()->SetTitle("Pulse time (ns)");
+	ch1Histo->GetYaxis()->SetTitle("Pulse amplitude (V)");
+	ch1Histo->SetStats(0000);
+	ch1Histo->SetMarkerStyle(20);
+	ch1Histo->SetMarkerColor(kBlue);
 
 
 	//read all entries and fill the histograms
@@ -260,38 +361,40 @@ void plot_MCP(char *filename)
 		int ch3Min = findMin(sampleSize,b1_ch3);
 		int ch4Min = findMin(sampleSize,b1_ch4);
 
+		//Draw only good events
+		if(b1_ch1[ch1Min]>-0.09 || b1_ch2[ch2Min]>-0.09) continue;
+
 
 		for(int m=0; m<1024; m++)
 		{
-			Ch3Dynamic->Fill(b1_t3[m],b1_ch3[m]);
-			//Ch3Dynamic->Fill(b1_t2[m],b1_ch2[m]);
+			ch1Histo->Fill(b1_t1[m],b1_ch1[m]);
+			ch2Histo->Fill(b1_t2[m],b1_ch2[m]);
+			ch3Histo->Fill(b1_t3[m],b1_ch3[m]);
+			ch4Histo->Fill(b1_t4[m],b1_ch4[m]);
 		}
 		//Zoom to the +/-10 marks of the minimum value
-		Ch3Dynamic->GetXaxis()->SetRangeUser(b1_t3[ch3Min-50],b1_t3[ch3Min+30]);
+		ch1Histo->GetXaxis()->SetRangeUser(b1_t1[ch1Min-30],b1_t1[ch1Min+30]);
+		ch2Histo->GetXaxis()->SetRangeUser(b1_t2[ch2Min-30],b1_t2[ch2Min+30]);
+		ch3Histo->GetXaxis()->SetRangeUser(b1_t3[ch3Min-30],b1_t3[ch3Min+30]);
+		ch4Histo->GetXaxis()->SetRangeUser(b1_t4[ch4Min-30],b1_t3[ch4Min+30]);
+
 		std::cout<<"Min channel "<<b1_t3[ch3Min]<<std::endl;
 		std::cout<<"Limits "<<b1_t3[ch3Min-10]<<" : "<<b1_t3[ch3Min+10]<<std::endl;
 
-		Ch3Dynamic->Draw();
+		/*		
+		c1->cd(1); ch3Histo->Draw();
+		//c1->cd(2); ch4Histo->Draw();
+		c1->cd(2); ch2Histo->Draw();
+		//c1->cd(4); ch1Histo->Draw();
 		c1->Modified();
 		c1->Update();
-		/*
-		//Save good histograms
-		if(b1_ch2[ch2Min]<-0.1)
-		{
-			char histo[20];
-			//sprintf(histo,"b1_ch3_%d.gif",iEntry);
-			sprintf(histo,"b1_ch2_%d.gif",iEntry);
-			c1->SaveAs(histo);
-		}
+		ch1Histo->Reset(); ch2Histo->Reset(); ch3Histo->Reset(); ch4Histo->Reset();
+		gSystem->Sleep(1500);  //in mictroseconds
 		*/
-
-		Ch3Dynamic->Reset();
-		gSystem->Sleep(500);  //in mictroseconds
 
   	}
 
-	//delTMax->Draw();
-	//Ch3Dynamic->SetMarkerStyle(6);
-	//Ch3Dynamic->SetMarkerSize(1);
-	//Ch3Dynamic->Draw();
+	//ch3Histo->SetMarkerStyle(6);
+	//ch3Histo->SetMarkerSize(1);
+	//ch3Histo->Draw();
 }
