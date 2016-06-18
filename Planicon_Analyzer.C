@@ -7,6 +7,7 @@
 #include "TH1F.h"
 #include "TH2F.h"
 #include "TMath.h"
+#include "TLine.h"
 #include "TF1.h"
 #include "TGraph.h"
 #include "TCanvas.h"
@@ -54,6 +55,46 @@ int findMin(int n, double *a)
   return loc;
 }
 
+double getAverage(std::vector<double> points)
+{
+	double avg = 0;
+	for (unsigned int i=0; i<points.size(); i++)
+	{
+		avg += points[i];	
+	}
+
+	return avg/points.size();
+}
+
+std::pair<double,double> getFit(std::vector<double> x, std::vector<double> y)
+{
+	double avgX = getAverage(x);
+	double avgY = getAverage(y);
+	
+	double num, denom;
+	for (unsigned int i=0; i<x.size(); i++)
+	{
+		num+=(x[i]-avgX)*(y[i]-avgY);
+		denom+=(x[i]-avgX)*(x[i]-avgX);
+	}
+	
+	std::pair<double,double> myPair;
+	myPair.first = num/denom;
+	myPair.second = avgY-myPair.first*avgX;
+
+	return myPair;
+}
+
+TLine getFitLine(double x1, double x2, std::pair<double,double> fit)
+{
+
+	double y1 = fit.second+fit.first*x1;
+	double y2 = fit.second+fit.first*x2;
+
+	TLine line = TLine(x1,y1,x2,y2);
+	return line;
+}
+
 double getRiseTime(double p0, double p1, double halfMin)
 {
 	return (halfMin-p0)/p1;
@@ -78,6 +119,8 @@ void analyze_MCP(char *filename)
 	double risingEdgeCh4X[4],risingEdgeCh4Y[4];
 	int ch1Idx = 0, ch2Idx = 0, ch3Idx = 0, ch4Idx = 0;
 	double ch1halfRise, ch2halfRise, ch3halfRise, ch4halfRise;
+
+	std::vector<double> ch1TestY, ch1TestX;
 
 	TGraphErrors risingEdgeCh1, risingEdgeCh2, risingEdgeCh3, risingEdgeCh4;
 	TFitResultPtr ch1Fit, ch2Fit, ch3Fit, ch4Fit;
@@ -135,7 +178,8 @@ void analyze_MCP(char *filename)
 
 	TH1F *deltaCh1Ch4 = new TH1F("deltaCh1Ch4","",50000,-1,1); //ns
 	TH1F *deltaCh3Ch4 = new TH1F("deltaCh3Ch4","",50000,-1,1); //ns
-	TH1F *chiSquare = new TH1F("chiSquare","",1000,0,0.01); //ns
+	TH1F *nPoint1 = new TH1F("nPoint1","",5,0,5); //ns
+	TH1F *nPoint2 = new TH1F("nPoint2","",5,0,5); //ns
 
 	//read all entries and fill the histograms
    	Long64_t nentries = t1->GetEntries();
@@ -144,7 +188,7 @@ void analyze_MCP(char *filename)
 	//for (Long64_t iEntry=0; iEntry<5; iEntry++) 
 	{
      		t1->GetEntry(iEntry);
-		double risingEdgeCh2X[4],risingEdgeCh2Y[4];
+		//double risingEdgeCh2X[4],risingEdgeCh2Y[4];
 
 		std::cout<<"Entry Number "<<iEntry<<std::endl;
 		//for ch1 and ch2 fit between peak and min
@@ -164,8 +208,6 @@ void analyze_MCP(char *filename)
 		double ch4halfMin = b1_ch4[ch4Min]/2;
 		ch1Idx = 0, ch2Idx =0, ch3Idx = 0; ch4Idx = 0;
 
-		//int id1=ch1Min, id2=ch2Min;
-		//bool skipThisPnt = false;
 		for(int m=0; m<1024; m++)
                 {
                         ch1Histo->Fill(b1_t1[m],b1_ch1[m]);
@@ -173,26 +215,28 @@ void analyze_MCP(char *filename)
                         ch3Histo->Fill(b1_t3[m],b1_ch3[m]);
                         ch4Histo->Fill(b1_t4[m],b1_ch4[m]);
 
-			//if(abs(b1_ch1[ch1Min]-b1_ch1[m])<0.01) skipThisPnt = true;
-
 
 			//Do it for Channel 1 
-			if(m<=ch1Max && m>=ch1Min && ch1Idx<4 )
+			//if(m<=ch1Max && m>=ch1Min && ch1Idx<4 )
+			if(m<=ch1Max && m>=ch1Min)
+			//&& ((b1_ch1[m]<0 && b1_ch1[m+1]>0) || (b1_ch1[m]>0 && b1_ch1[m-1]<0)))
                         {
+				ch1TestX.push_back(b1_t1[m]);
+				ch1TestY.push_back(b1_ch1[m]);
                                 risingEdgeCh1X[ch1Idx] = b1_t1[m];
                                 risingEdgeCh1Y[ch1Idx] = b1_ch1[m];
+				//std::cout<<" "<<risingEdgeCh1X[ch1Idx]<<","<<risingEdgeCh1Y[ch1Idx]<<std::endl;
                                 ch1Idx+=1;
                         }
 
 			//Do it for Channel 2
-			if(m<=ch2Max && m>=ch2Min && ch2Idx<4)
+			//if(m<=ch2Max && m>=ch2Min && ch2Idx<4)
+			if(m<ch2Max && m>=ch2Min
+			//&& ((b1_ch2[m]<0 && b1_ch2[m+1]>0) || (b1_ch2[m]>0 && b1_ch2[m-1]<0))
+			)
                         {
-				//std::cout<<"Idx "<<ch2Idx<<","<<m<<std::endl;
-				//std::cout<<"Amp "<<b1_t2[m]<<","<<b1_ch2[m]<<std::endl;
-
                                 risingEdgeCh2X[ch2Idx] = b1_t2[m];
                                 risingEdgeCh2Y[ch2Idx] = b1_ch2[m];
-				//std::cout<<" "<<risingEdgeCh2X[ch2Idx]<<","<<risingEdgeCh2Y[ch2Idx]<<std::endl;
                                 ch2Idx+=1;
                         }
 
@@ -226,14 +270,25 @@ void analyze_MCP(char *filename)
                         }
 
                 }
-
+		nPoint1->Fill(ch1Idx);
+		nPoint2->Fill(ch2Idx);
 
 		//Perform linear fit to Channel1
 		risingEdgeCh1 = TGraphErrors(4,risingEdgeCh1X,risingEdgeCh1Y);
 		ch1Fit = risingEdgeCh1.Fit("pol1","SFC");
 		ch1halfRise = getRiseTime(ch1Fit->Value(0),ch1Fit->Value(1),0.00);
 
-		risingEdgeCh2 = TGraphErrors(4,risingEdgeCh2X,risingEdgeCh2Y);
+
+		//perform fit using my code
+		std::pair<double,double> myFit = getFit(ch1TestX,ch1TestY);
+		std::cout<<"My Result slope "<<myFit.first<<" ; "<<myFit.second<<std::endl;
+
+		TLine tmp = getFitLine(ch1TestX[0],ch1TestX.back(),myFit);
+		tmp.SetLineColor(kBlue);
+		tmp.SetLineWidth(4);
+
+		/*
+		risingEdgeCh2 = TGraphErrors(2,risingEdgeCh2X,risingEdgeCh2Y);
 		ch2Fit = risingEdgeCh2.Fit("pol1","SFC");
 		ch2halfRise = getRiseTime(ch2Fit->Value(0),ch2Fit->Value(1),0.00);
 
@@ -249,15 +304,18 @@ void analyze_MCP(char *filename)
 
 		std::cout<<"Ch2 Rise Time "<<ch2halfRise<<std::endl;
 		std::cout<<"Ch3 Rise Time "<<ch3halfRise<<std::endl;
-
-		//std::cout<<"Ch2 Array "<<sizeof(risingEdgeCh2X)/sizeof(risingEdgeCh2X[0])<<std::endl;
-		/*
-		for (unsigned int i=0; i<4; i++)
-		{
-			std::cout<<"Rising2 "<<risingEdgeCh2X[i]<<":"<<risingEdgeCh2Y[i]<<std::endl;
-		}
 		*/
 
+		//std::cout<<"Ch2 Array "<<sizeof(risingEdgeCh2X)/sizeof(risingEdgeCh2X[0])<<std::endl;
+		//for (unsigned int i=0; i<sizeof(risingEdgeCh2X)/sizeof(risingEdgeCh2X[0]); i++)
+		//for (unsigned int i=0; i<ch1TestX.size(); i++)
+		//{
+		//	std::cout<<"Points "<<ch1TestX[i]<<" : "<<ch1TestY[i]<<std::endl;
+		//}
+		ch1TestX.clear();
+		ch1TestY.clear();
+
+		/*
 		outFile<<std::setprecision(std::numeric_limits<long double>::digits10 + 1)<<
 		" "<<ch3halfRise-ch4halfRise<<
 		" "<<ch1halfRise-ch2halfRise<<
@@ -265,12 +323,11 @@ void analyze_MCP(char *filename)
 		" "<<ch3halfRise-ch2halfRise<<
 		" "<<b1_ch1[ch1Min]<<" "<<b1_ch2[ch2Min]<<" "<<b1_ch3[ch3Min]<<" "<<b1_ch4[ch4Min]<<
 		" "<<std::endl;
+		*/
 
-		deltaCh1Ch4->Fill(ch1halfRise-ch4halfRise);
-		deltaCh3Ch4->Fill(ch3halfRise-ch4halfRise);
-		chiSquare->Fill(ch4Fit->Chi2());
+		//deltaCh1Ch4->Fill(ch1halfRise-ch4halfRise);
+		//deltaCh3Ch4->Fill(ch3halfRise-ch4halfRise);
 
-		/*
 		//zoom in
                 ch2Histo->GetXaxis()->SetRangeUser(b1_t2[ch2Min-30],b1_t2[ch2Min+30]);
                 //ch3Histo->GetXaxis()->SetRangeUser(b1_t3[ch3Min-30],b1_t3[ch3Min+30]);
@@ -278,7 +335,7 @@ void analyze_MCP(char *filename)
 		//draw ch3 first
 		c1->cd(1); ch1Histo->Draw(); risingEdgeCh1.Draw("same");
 		//draw ch2 next
-		c1->cd(2); ch2Histo->Draw(); risingEdgeCh2.Draw("same");
+		c1->cd(2); ch1Histo->Draw(); tmp.Draw("same");
 
                 c1->Modified();
                 c1->Update();
@@ -289,12 +346,12 @@ void analyze_MCP(char *filename)
                 ch2Histo->Reset(); //ch3Histo->Reset(); 
 		ch1Histo->Reset();
                 gSystem->Sleep(3500);  //in mictroseconds
-		*/
 
 	}
 
 	//deltaCh3Ch4->Draw();
-	chiSquare->Draw();
+	c1->cd(1); nPoint1->Draw();
+	c1->cd(2); nPoint2->Draw();
 
 }
 
